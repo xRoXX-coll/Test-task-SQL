@@ -1,0 +1,74 @@
+-- 1.	Вывести список сотрудников, получающих заработную плату больше, чем у непосредственного руководителя:
+
+SELECT t1.*
+FROM EMPLOYEE t1, EMPLOYEE t2
+WHERE t1.id = t2.chief_id AND t1.salary > t2.salary;
+
+-- 2.	Произошел сбой. В таблицу DOCUMENTS было загружено некоторое количество дублей. Необходимо написать запрос, который выявит количество дублей и выведет список дублированных строк:
+
+SELECT * 
+FROM (
+  SELECT *, 
+         COUNT(*) OVER (PARTITION BY  EMPLOYEE_ID, DOCUMENT_TYPE, DOCUMENT_NUMBER, ISSUED_BY, ISSUED_DATE, EXPIRED_DATE) as cnt
+  FROM DOCUMENT
+) AS t1
+WHERE cnt > 1;
+
+
+-- 3.	Посчитать долю заработной платы сотрудника в ФОТ (фонд оплаты труда) отдела за месяц
+
+SELECT NAME, DEPATRMENT_ID, SALARY,
+    100 * SALARY / SUM(SALARY) OVER (PARTITION BY DEPARTMENT_ID) PERC
+FROM EMPLOYEE
+ORDER BY ID
+
+-- 4.	Вывести ФИО сотрудника и наименование отдела. Для каждого отдела в списке должен быть сотрудник с предпоследним по дате выдачи паспортом среди всего отдела
+
+WITH rn AS (
+    SELECT EMPLOYEE_ID, DOCUMENT_NUMBER, ISSUED_DATE,
+           ROW_NUMBER() OVER (PARTITION BY EMPLOYEE_ID ORDER BY ISSUED_DATE DESC) AS Rank
+    FROM DOCUMENT
+    WHERE DOCUMENT_TYPE = 'паспорт'),
+
+SecondPassport AS (
+SELECT rn.EMPLOYEE_ID, rn.DOCUMENT_NUMBER, rn.ISSUED_DATE
+    FROM rn
+    WHERE rn.Rank = 2)
+
+SELECT EMPLOYEE.NAME, DEPARTMENT.NAME 
+FROM SecondPassport
+JOIN EMPLOYEE ON SecondPassport.EMPLOYEE_ID = EMPLOYEE.ID
+JOIN DEPARTMENT ON EMPLOYEE.DEPARTMENT_ID = DEPARTMENT.ID;
+
+-- 5.	Вывести список однофамильцев в отделах
+
+SELECT 
+    SUBSTR(NAME, INSTR(NAME, '  ') + 1)    as last_name
+    DEPARTMENT.NAME,
+FROM 
+    EMPLOYEE
+JOIN 
+    DEPARTMENT ON EMPLOYEE.DEPARTMENT_ID = DEPARTMENT.ID
+GROUP BY 
+    LAST_NAME, DEPARTMENT_NAME
+HAVING 
+    COUNT(EMPLOYEE.ID) > 1
+ORDER BY 
+    DEPARTMENT_NAME, LAST_NAME;
+
+-- 6.	Найти сотрудников, у которых есть более одного действующего паспорта
+
+SELECT EMPLOYEE.NAME
+FROM EMPLOYEE 
+JOIN DOCUMENT ON EMPLOYEE.ID = DOCUMENT.EMPLOYEE_ID
+WHERE DOCUMENT.DOCUMENT_TYPE = 'паспорт' AND (DOCUMENT.EXPIRED_DATE IS NULL OR DOCUMENT.EXPIRED_DATE > CURRENT_DATE)
+GROUP BY EMPLOYEE.ID, EMPLOYEE.NAME
+HAVING COUNT(DOCUMENT.ID) > 1;
+
+-- 7.	Найти сотрудников, у которых нет действующих паспортов
+
+SELECT EMPLOYEE.NAME
+FROM EMPLOYEE 
+JOIN DOCUMENT ON EMPLOYEE.ID = DOCUMENT.EMPLOYEE_ID
+WHERE DOCUMENT.DOCUMENT_TYPE = 'паспорт' AND (DOCUMENT.EXPIRED_DATE IS NULL OR DOCUMENT.EXPIRED_DATE < CURRENT_DATE)
+GROUP BY EMPLOYEE.ID, EMPLOYEE.NAME
